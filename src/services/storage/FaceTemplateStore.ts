@@ -8,18 +8,37 @@ import {
 const FACE_TEMPLATE_SERVICE = 'com.x.mobile.face-template.v2';
 const FACE_TEMPLATE_USERNAME = 'on-device-face-template';
 
+type FaceTemplateCollection = {
+  schemaVersion: 1;
+  templates: FaceTemplate[];
+};
+
 export interface FaceTemplateStore {
   save(template: FaceTemplate): Promise<void>;
   read(): Promise<FaceTemplate | null>;
-  delete(): Promise<void>;
+  readAll(): Promise<FaceTemplate[]>;
+  delete(ownerId?: string): Promise<void>;
 }
 
 export class KeychainFaceTemplateStore implements FaceTemplateStore {
   async save(template: FaceTemplate) {
     assertFaceTemplate(template);
+    const templates = await this.readAll();
+    const collection: FaceTemplateCollection = {
+      schemaVersion: 1,
+      templates: [
+        ...templates.filter(
+          item =>
+            item.owner.id !== template.owner.id &&
+            normalizeEmail(item.owner.email) !==
+              normalizeEmail(template.owner.email),
+        ),
+        template,
+      ],
+    };
     const result = await Keychain.setGenericPassword(
       FACE_TEMPLATE_USERNAME,
-      JSON.stringify(template),
+      JSON.stringify(collection),
       {
         service: FACE_TEMPLATE_SERVICE,
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
@@ -34,24 +53,62 @@ export class KeychainFaceTemplateStore implements FaceTemplateStore {
   }
 
   async read() {
+    const templates = await this.readAll();
+    return templates[0] ?? null;
+  }
+
+  async readAll() {
     const credentials = await Keychain.getGenericPassword({
       service: FACE_TEMPLATE_SERVICE,
     });
 
     if (!credentials) {
-      return null;
+      return [];
     }
 
     try {
-      const template: unknown = JSON.parse(credentials.password);
-      assertFaceTemplate(template);
-      return template;
+      const value: unknown = JSON.parse(credentials.password);
+
+      // Existing single-template installs migrate without deleting face data.
+      try {
+        assertFaceTemplate(value);
+        return [value];
+      } catch {
+        assertFaceTemplateCollection(value);
+        return value.templates;
+      }
     } catch {
-      return null;
+      return [];
     }
   }
 
-  async delete() {
+  async delete(ownerId?: string) {
+    if (ownerId) {
+      const templates = await this.readAll();
+      const remaining = templates.filter(item => item.owner.id !== ownerId);
+
+      if (remaining.length === templates.length) {
+        return;
+      }
+
+      if (remaining.length > 0) {
+        const result = await Keychain.setGenericPassword(
+          FACE_TEMPLATE_USERNAME,
+          JSON.stringify({ schemaVersion: 1, templates: remaining }),
+          {
+            service: FACE_TEMPLATE_SERVICE,
+            accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+            securityLevel: Keychain.SECURITY_LEVEL.SECURE_SOFTWARE,
+            storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+          },
+        );
+        if (!result) {
+          throw new Error('Yüz şablonu güvenli depodan silinemedi.');
+        }
+        return;
+      }
+    }
+
     await Keychain.resetGenericPassword({ service: FACE_TEMPLATE_SERVICE });
     const stillExists = await Keychain.hasGenericPassword({
       service: FACE_TEMPLATE_SERVICE,
@@ -60,6 +117,28 @@ export class KeychainFaceTemplateStore implements FaceTemplateStore {
     if (stillExists) {
       throw new Error('Yüz şablonu güvenli depodan silinemedi.');
     }
+  }
+}
+
+function assertFaceTemplateCollection(
+  value: unknown,
+): asserts value is FaceTemplateCollection {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    (value as Partial<FaceTemplateCollection>).schemaVersion !== 1 ||
+    !Array.isArray((value as Partial<FaceTemplateCollection>).templates)
+  ) {
+    throw new Error('Geçersiz yüz şablonu koleksiyonu.');
+  }
+
+  const templates = (value as FaceTemplateCollection).templates;
+  templates.forEach(assertFaceTemplate);
+  if (
+    new Set(templates.map(template => template.owner.id)).size !==
+    templates.length
+  ) {
+    throw new Error('Yinelenen yüz şablonu sahibi.');
   }
 }
 
@@ -99,3 +178,7 @@ export function assertFaceTemplate(
 }
 
 export const faceTemplateStore = new KeychainFaceTemplateStore();
+
+function normalizeEmail(email: string) {
+  return email.trim().toLocaleLowerCase('en-US');
+}

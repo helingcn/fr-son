@@ -38,7 +38,8 @@ import { colors, spacing } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 const MODEL_ASSET = require('../assets/models/facenet.tflite');
-const REQUIRED_SAMPLES = 3;
+const REQUIRED_SAMPLES = 5;
+const SAMPLE_INTERVAL_MS = 250;
 const ENGINE_LOADING_TIMEOUT_MS = 30_000;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FaceEnrollment'>;
@@ -74,11 +75,11 @@ function FaceEnrollmentSession({
   const permission = useCameraPermission();
   const modelState = useTensorflowModel(MODEL_ASSET, []);
   const resizerState = useResizer({
-    width: FACE_MODEL.inputSize,
-    height: FACE_MODEL.inputSize,
+    width: FACE_MODEL.extractionWidth,
+    height: FACE_MODEL.extractionHeight,
     channelOrder: 'rgb',
     dataType: 'float32',
-    scaleMode: 'cover',
+    scaleMode: 'stretch',
     pixelLayout: 'interleaved',
   });
   const [isForeground, setIsForeground] = useState(
@@ -95,6 +96,7 @@ function FaceEnrollmentSession({
   const [isSaving, setIsSaving] = useState(false);
   const [engineTimedOut, setEngineTimedOut] = useState(false);
   const sampleCountRef = useRef(0);
+  const lastSampleAtRef = useRef(0);
   const engineWasReadyRef = useRef(false);
 
   useEffect(() => {
@@ -137,8 +139,14 @@ function FaceEnrollmentSession({
   );
 
   const handleEmbedding = useCallback((embedding: number[]) => {
+    const now = Date.now();
+    if (now - lastSampleAtRef.current < SAMPLE_INTERVAL_MS) {
+      return;
+    }
+
     try {
       const normalized = faceEngine.normalizeEmbedding(embedding);
+      lastSampleAtRef.current = now;
       setSamples(current => {
         if (current.length >= REQUIRED_SAMPLES) {
           return current;
@@ -378,6 +386,7 @@ function FaceEnrollmentSession({
 
   function resetEnrollment() {
     sampleCountRef.current = 0;
+    lastSampleAtRef.current = 0;
     setSamples([]);
     setError(undefined);
     setChallenge(

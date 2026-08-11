@@ -1,13 +1,16 @@
 export const FACE_MODEL = {
-  id: 'demo-facenet-128',
+  id: 'demo-facenet-128-face-crop-v2',
   inputSize: 160,
+  extractionWidth: 240,
+  extractionHeight: 320,
+  cropScale: 1.4,
   embeddingDimension: 128,
   demoOnly: true,
 } as const;
 
 export const FACE_MATCH_POLICY = {
-  threshold: 0.4,
-  thresholdVersion: 'demo-uncalibrated-v1',
+  threshold: 0.8,
+  thresholdVersion: 'demo-cropped-v2',
 } as const;
 
 export type FaceEmbedding = number[];

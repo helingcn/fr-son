@@ -1,4 +1,11 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import type { ReactNode } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { colors, spacing } from '../theme';
 
 type PrimaryButtonProps = {
@@ -6,6 +13,7 @@ type PrimaryButtonProps = {
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
+  leadingIcon?: ReactNode;
 };
 
 export function PrimaryButton({
@@ -13,6 +21,7 @@ export function PrimaryButton({
   onPress,
   disabled,
   loading,
+  leadingIcon,
 }: PrimaryButtonProps) {
   return (
     <Pressable
@@ -29,7 +38,10 @@ export function PrimaryButton({
       {loading ? (
         <ActivityIndicator color={colors.surface} />
       ) : (
-        <Text style={styles.label}>{label}</Text>
+        <View style={styles.content}>
+          {leadingIcon}
+          <Text style={styles.label}>{label}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -50,6 +62,12 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   label: {
     color: colors.surface,

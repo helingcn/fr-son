@@ -26,37 +26,43 @@ import {
   type DetectedFace,
 } from '../features/faceEnrollment/useFaceCameraOutput';
 import { faceEngine } from '../services/face/DemoFaceNetEngine';
-import { FACE_MODEL, type FaceEmbedding } from '../services/face/types';
 import {
-  MAX_FACE_VERIFICATION_ATTEMPTS,
-  faceVerificationAttemptStore,
-} from '../services/storage/FaceVerificationAttemptStore';
+  FACE_MATCH_POLICY,
+  FACE_MODEL,
+  type FaceEmbedding,
+} from '../services/face/types';
+import { faceVerificationAttemptStore } from '../services/storage/FaceVerificationAttemptStore';
 import { faceTemplateStore } from '../services/storage/FaceTemplateStore';
 import { useAuthStore } from '../store/authStore';
 import { colors, spacing } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 const MODEL_ASSET = require('../assets/models/facenet.tflite');
-const REQUIRED_SAMPLES = 3;
+const REQUIRED_SAMPLES = 5;
+const SAMPLE_INTERVAL_MS = 250;
+const MATCH_RESULT_DISPLAY_MS = 500;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FaceVerification'>;
-type StartupState = 'loading' | 'ready' | 'no-template' | 'locked' | 'error';
+type StartupState = 'loading' | 'ready' | 'no-template' | 'error';
+type VerificationDecision = {
+  similarity: number;
+  matched: boolean;
+};
 
 export function FaceVerificationScreen({ navigation }: Props) {
-  const completeLogin = useAuthStore(state => state.completeLogin);
+  const completeFaceLogin = useAuthStore(state => state.completeFaceLogin);
   const device = useCameraDevice('front');
   const permission = useCameraPermission();
   const modelState = useTensorflowModel(MODEL_ASSET, []);
   const resizerState = useResizer({
-    width: FACE_MODEL.inputSize,
-    height: FACE_MODEL.inputSize,
+    width: FACE_MODEL.extractionWidth,
+    height: FACE_MODEL.extractionHeight,
     channelOrder: 'rgb',
     dataType: 'float32',
-    scaleMode: 'cover',
+    scaleMode: 'stretch',
     pixelLayout: 'interleaved',
   });
   const [startupState, setStartupState] = useState<StartupState>('loading');
-  const [attemptCount, setAttemptCount] = useState(0);
   const [isForeground, setIsForeground] = useState(
     AppState.currentState === 'active',
   );
@@ -69,20 +75,22 @@ export function FaceVerificationScreen({ navigation }: Props) {
   const [samples, setSamples] = useState<FaceEmbedding[]>([]);
   const [error, setError] = useState<string>();
   const [isVerifying, setIsVerifying] = useState(false);
+  const [lastDecision, setLastDecision] =
+    useState<VerificationDecision>();
   const sampleCountRef = useRef(0);
+  const lastSampleAtRef = useRef(0);
+  const isVerifyingRef = useRef(false);
 
   useEffect(() => {
     let active = true;
-    Promise.all([faceTemplateStore.read(), faceVerificationAttemptStore.read()])
-      .then(([template, attempts]) => {
+    faceTemplateStore
+      .readAll()
+      .then(templates => {
         if (!active) {
           return;
         }
-        setAttemptCount(attempts.count);
-        if (!template) {
+        if (templates.length === 0) {
           setStartupState('no-template');
-        } else if (attempts.count >= MAX_FACE_VERIFICATION_ATTEMPTS) {
-          setStartupState('locked');
         } else {
           setStartupState('ready');
         }
@@ -101,18 +109,8 @@ export function FaceVerificationScreen({ navigation }: Props) {
     return () => subscription.remove();
   }, []);
 
-  const recordFailedAttempt = useCallback(async (message: string) => {
-    try {
-      const attempts = await faceVerificationAttemptStore.recordFailure();
-      setAttemptCount(attempts.count);
-      setError(message);
-      if (attempts.count >= MAX_FACE_VERIFICATION_ATTEMPTS) {
-        setStartupState('locked');
-      }
-    } catch {
-      setError('Doğrulama güvenli şekilde tamamlanamadı. Şifre kullanın.');
-      setStartupState('error');
-    }
+  const recordFailedAttempt = useCallback((message: string) => {
+    setError(message);
   }, []);
 
   useEffect(() => {
@@ -159,8 +157,14 @@ export function FaceVerificationScreen({ navigation }: Props) {
       return;
     }
 
+    const now = Date.now();
+    if (now - lastSampleAtRef.current < SAMPLE_INTERVAL_MS) {
+      return;
+    }
+
     try {
       const normalized = faceEngine.normalizeEmbedding(embedding);
+      lastSampleAtRef.current = now;
       sampleCountRef.current += 1;
       setSamples(current => [...current, normalized]);
     } catch {
@@ -195,37 +199,62 @@ export function FaceVerificationScreen({ navigation }: Props) {
   const outputs = useMemo(() => [frameOutput], [frameOutput]);
 
   useEffect(() => {
-    if (samples.length !== REQUIRED_SAMPLES || isVerifying || error) {
+    if (
+      samples.length !== REQUIRED_SAMPLES ||
+      isVerifyingRef.current ||
+      error
+    ) {
       return;
     }
 
     let active = true;
     async function verify() {
+      isVerifyingRef.current = true;
       setIsVerifying(true);
       try {
         faceEngine.assertDemoBuild();
-        const template = await faceTemplateStore.read();
-        if (!template) {
+        const templates = await faceTemplateStore.readAll();
+        if (templates.length === 0) {
           setStartupState('no-template');
           return;
         }
 
         const candidate = faceEngine.averageEmbeddings(samples);
-        if (!faceEngine.isMatch(template.embedding, candidate)) {
+        const bestMatch = templates
+          .map(template => ({
+            template,
+            similarity: faceEngine.cosineSimilarity(
+              template.embedding,
+              candidate,
+            ),
+          }))
+          .reduce((best, current) =>
+            current.similarity > best.similarity ? current : best,
+          );
+        const { template, similarity } = bestMatch;
+        const matched = similarity >= FACE_MATCH_POLICY.threshold;
+        setLastDecision({ similarity, matched });
+
+        if (!matched) {
           await recordFailedAttempt('Yüzünüz doğrulanamadı.');
           return;
         }
 
         await faceVerificationAttemptStore.reset();
-        if (active) {
-          completeLogin(template.owner);
+        await new Promise<void>(resolve =>
+          setTimeout(() => resolve(), MATCH_RESULT_DISPLAY_MS),
+        );
+        if (!active) {
+          return;
         }
+        completeFaceLogin(template.owner);
       } catch {
         if (active) {
           setError('Yüz doğrulama tamamlanamadı. Şifre kullanın.');
           setStartupState('error');
         }
       } finally {
+        isVerifyingRef.current = false;
         if (active) {
           setIsVerifying(false);
         }
@@ -236,7 +265,7 @@ export function FaceVerificationScreen({ navigation }: Props) {
     return () => {
       active = false;
     };
-  }, [completeLogin, error, isVerifying, recordFailedAttempt, samples]);
+  }, [completeFaceLogin, error, recordFailedAttempt, samples]);
 
   function goToPassword() {
     navigation.popTo('Login');
@@ -258,17 +287,6 @@ export function FaceVerificationScreen({ navigation }: Props) {
       <ScreenPlaceholder
         title="Yüz kaydı bulunamadı"
         description="Bu cihazda kullanılabilir bir yüz kaydı yok veya kayıt güncel modelle uyumlu değil. Şifrenizle giriş yaptıktan sonra yüz kaydını yeniden oluşturabilirsiniz."
-      >
-        <PrimaryButton label="Şifre ile giriş" onPress={goToPassword} />
-      </ScreenPlaceholder>
-    );
-  }
-
-  if (startupState === 'locked') {
-    return (
-      <ScreenPlaceholder
-        title="Şifre ile devam edin"
-        description="Art arda üç yüz doğrulama denemesi başarısız oldu. Güvenliğiniz için yüz ile giriş geçici olarak durduruldu."
       >
         <PrimaryButton label="Şifre ile giriş" onPress={goToPassword} />
       </ScreenPlaceholder>
@@ -357,10 +375,29 @@ export function FaceVerificationScreen({ navigation }: Props) {
         {!challenge.complete && !challenge.error ? (
           <Text style={styles.quality}>{qualityMessage}</Text>
         ) : null}
-        <Text style={styles.attempts}>
-          Kalan yüz denemesi:{' '}
-          {Math.max(0, MAX_FACE_VERIFICATION_ATTEMPTS - attemptCount)}
-        </Text>
+        <Text style={styles.attempts}>Yüz denemesi sınırsızdır</Text>
+        <View style={styles.decisionPanel}>
+          <Text style={styles.decisionTitle}>Karar ayrıntıları</Text>
+          <Text style={styles.decisionText}>
+            Eşik: {FACE_MATCH_POLICY.threshold.toFixed(3)}
+          </Text>
+          <Text style={styles.decisionText}>
+            Son benzerlik:{' '}
+            {lastDecision ? lastDecision.similarity.toFixed(3) : '—'}
+          </Text>
+          {lastDecision ? (
+            <Text
+              accessibilityLiveRegion="polite"
+              style={
+                lastDecision.matched
+                  ? styles.decisionAccepted
+                  : styles.decisionRejected
+              }
+            >
+              Karar: {lastDecision.matched ? 'Eşleşti' : 'Eşleşmedi'}
+            </Text>
+          ) : null}
+        </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {(challenge.error || error) && startupState === 'ready' ? (
           <PrimaryButton label="Tekrar dene" onPress={resetVerification} />
@@ -372,6 +409,7 @@ export function FaceVerificationScreen({ navigation }: Props) {
 
   function resetVerification() {
     sampleCountRef.current = 0;
+    lastSampleAtRef.current = 0;
     setSamples([]);
     setError(undefined);
     setChallenge(
@@ -425,6 +463,35 @@ const styles = StyleSheet.create({
   attempts: {
     color: '#D0D5DD',
     fontSize: 13,
+    textAlign: 'center',
+  },
+  decisionPanel: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
+    borderRadius: 10,
+    padding: spacing.sm,
+  },
+  decisionTitle: {
+    color: colors.surface,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  decisionText: {
+    color: '#D0D5DD',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  decisionAccepted: {
+    color: '#6CE9A6',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  decisionRejected: {
+    color: '#FDA29B',
+    fontSize: 13,
+    fontWeight: '700',
     textAlign: 'center',
   },
   error: {

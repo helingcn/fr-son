@@ -77,6 +77,7 @@ export function RegisterScreen({ navigation }: Props) {
         autoCapitalize="words"
         autoComplete="given-name"
         error={errors.firstName}
+        icon="Aa"
         label="Ad"
         onChangeText={value => {
           setFirstName(value);
@@ -91,6 +92,7 @@ export function RegisterScreen({ navigation }: Props) {
         autoCapitalize="words"
         autoComplete="family-name"
         error={errors.lastName}
+        icon="Aa"
         label="Soyad"
         onChangeText={value => {
           setLastName(value);
@@ -106,6 +108,7 @@ export function RegisterScreen({ navigation }: Props) {
         autoComplete="email"
         error={errors.email}
         inputMode="email"
+        icon="@"
         keyboardType="email-address"
         label="E-posta"
         onChangeText={value => {
@@ -121,6 +124,7 @@ export function RegisterScreen({ navigation }: Props) {
         autoCapitalize="none"
         autoComplete="new-password"
         error={errors.password}
+        icon="••"
         label="Şifre"
         onChangeText={value => {
           setPassword(value);
@@ -136,6 +140,7 @@ export function RegisterScreen({ navigation }: Props) {
         autoCapitalize="none"
         autoComplete="new-password"
         error={errors.confirmPassword}
+        icon="✓"
         label="Şifre tekrarı"
         onChangeText={value => {
           setConfirmPassword(value);
@@ -154,8 +159,8 @@ export function RegisterScreen({ navigation }: Props) {
       <View style={styles.notice}>
         <Text style={styles.draftLabel}>{FACE_CONSENT_COPY.draftLabel}</Text>
         <Text style={styles.noticeText}>
-          {FACE_CONSENT_COPY.notice}{' '}
-          Bu iki aşamalı kayıt işlemini tamamlamak için yüz taraması zorunludur.
+          {FACE_CONSENT_COPY.notice} Bu iki aşamalı kayıt işlemini tamamlamak
+          için yüz taraması zorunludur.
         </Text>
       </View>
       <Pressable
@@ -166,10 +171,7 @@ export function RegisterScreen({ navigation }: Props) {
         style={styles.consentRow}
       >
         <View
-          style={[
-            styles.checkbox,
-            hasFaceConsent && styles.checkboxChecked,
-          ]}
+          style={[styles.checkbox, hasFaceConsent && styles.checkboxChecked]}
         >
           {hasFaceConsent ? <Text style={styles.checkmark}>✓</Text> : null}
         </View>

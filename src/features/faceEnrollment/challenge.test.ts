@@ -12,7 +12,7 @@ const baseSignals = {
 };
 
 describe('enrollment challenge', () => {
-  it('requires close-open blink, turn and return to center in order', () => {
+  it('requires blink, both turns and returns to center in order', () => {
     let state = createChallengeState('left', 1_000);
 
     state = advanceChallenge(
@@ -33,7 +33,25 @@ describe('enrollment challenge', () => {
     expect(state.currentIndex).toBe(2);
 
     state = advanceChallenge(state, baseSignals, 1_400);
+    expect(state.currentIndex).toBe(3);
+
+    state = advanceChallenge(state, { ...baseSignals, yawAngle: 20 }, 1_500);
+    expect(state.currentIndex).toBe(4);
+
+    state = advanceChallenge(state, baseSignals, 1_600);
     expect(state.complete).toBe(true);
+  });
+
+  it('reverses the turn order when the challenge starts on the right', () => {
+    const state = createChallengeState('right', 1_000);
+
+    expect(state.steps).toEqual([
+      'blink',
+      'turnRight',
+      'center',
+      'turnLeft',
+      'center',
+    ]);
   });
 
   it('does not accept an open-eye frame as a blink', () => {

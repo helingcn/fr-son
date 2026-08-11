@@ -46,6 +46,7 @@ describe('KeychainFaceTemplateStore', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('stores the template with device-only accessibility', async () => {
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValue(false);
     jest.mocked(Keychain.setGenericPassword).mockResolvedValue({
       service: 'com.x.mobile.face-template.v2',
       storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
@@ -55,12 +56,76 @@ describe('KeychainFaceTemplateStore', () => {
 
     expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
       'on-device-face-template',
-      JSON.stringify(template),
+      JSON.stringify({ schemaVersion: 1, templates: [template] }),
       expect.objectContaining({
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
         storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
       }),
     );
+  });
+
+  it('keeps other users when a new face is saved', async () => {
+    const secondTemplate: FaceTemplate = {
+      ...template,
+      owner: {
+        id: 'user-2',
+        email: 'grace@example.com',
+        firstName: 'Grace',
+        lastName: 'Hopper',
+      },
+    };
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValue({
+      username: 'on-device-face-template',
+      password: JSON.stringify({ schemaVersion: 1, templates: [template] }),
+      service: 'com.x.mobile.face-template.v2',
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    });
+    jest.mocked(Keychain.setGenericPassword).mockResolvedValue({
+      service: 'com.x.mobile.face-template.v2',
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    });
+
+    await store.save(secondTemplate);
+
+    expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
+      'on-device-face-template',
+      JSON.stringify({
+        schemaVersion: 1,
+        templates: [template, secondTemplate],
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('replaces an older face identity that uses the same email', async () => {
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValue({
+      username: 'on-device-face-template',
+      password: JSON.stringify({
+        schemaVersion: 1,
+        templates: [template],
+      }),
+      service: 'com.x.mobile.face-template.v2',
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    });
+    jest.mocked(Keychain.setGenericPassword).mockResolvedValue({
+      service: 'com.x.mobile.face-template.v2',
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    });
+
+    const migratedTemplate = {
+      ...template,
+      owner: {
+        ...template.owner,
+        id: 'local-user-new-id',
+        email: template.owner.email.toLocaleUpperCase('en-US'),
+      },
+    };
+    await store.save(migratedTemplate);
+
+    const savedCollection = JSON.parse(
+      jest.mocked(Keychain.setGenericPassword).mock.calls[0][1],
+    );
+    expect(savedCollection.templates).toEqual([migratedTemplate]);
   });
 
   it('reads and deletes a valid template', async () => {
@@ -86,6 +151,35 @@ describe('KeychainFaceTemplateStore', () => {
     jest.mocked(Keychain.hasGenericPassword).mockResolvedValue(true);
 
     await expect(store.delete()).rejects.toThrow('silinemedi');
+  });
+
+  it('deletes only the selected user from a multi-user collection', async () => {
+    const secondTemplate: FaceTemplate = {
+      ...template,
+      owner: { ...template.owner, id: 'user-2', email: 'two@example.com' },
+    };
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValue({
+      username: 'on-device-face-template',
+      password: JSON.stringify({
+        schemaVersion: 1,
+        templates: [template, secondTemplate],
+      }),
+      service: 'com.x.mobile.face-template.v2',
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    });
+    jest.mocked(Keychain.setGenericPassword).mockResolvedValue({
+      service: 'com.x.mobile.face-template.v2',
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    });
+
+    await store.delete('user-1');
+
+    expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
+      'on-device-face-template',
+      JSON.stringify({ schemaVersion: 1, templates: [secondTemplate] }),
+      expect.any(Object),
+    );
+    expect(Keychain.resetGenericPassword).not.toHaveBeenCalled();
   });
 
   it('fails closed for legacy, malformed and incompatible templates', async () => {

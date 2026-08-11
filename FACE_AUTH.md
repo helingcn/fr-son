@@ -1,6 +1,6 @@
-# X Mobile yüz doğrulama mimarisi
+# FaceKey yüz doğrulama mimarisi
 
-Bu belge, X Mobile uygulamasındaki isteğe bağlı on-device yüz doğrulama akışını teknik olarak özetler. Hukuki tavsiye değildir; KVKK ve biyometrik veri değerlendirmesi hukuk ekibi tarafından yapılmalıdır.
+Bu belge, FaceKey uygulamasındaki isteğe bağlı on-device yüz doğrulama akışını teknik olarak özetler. Hukuki tavsiye değildir; KVKK ve biyometrik veri değerlendirmesi hukuk ekibi tarafından yapılmalıdır.
 
 ## Durum
 
@@ -19,7 +19,7 @@ Akış yalnızca cihaz üzerinde çalışır:
 2. Native frame worklet içinde yüz algılama ve embedding çıkarımı yapılır.
 3. Ham frame, fotoğraf ve video dosyaya yazılmaz ve ağa gönderilmez.
 4. Sadece normalize edilmiş matematiksel embedding hesaplanır.
-5. Embedding cihaz güvenli deposunda saklanır veya kayıtlı embedding ile cihazda karşılaştırılır.
+5. Embedding kullanıcı kimliğiyle cihaz güvenli deposunda saklanır veya kayıtlı embedding'lerle cihazda karşılaştırılır.
 6. Başarılı doğrulama yalnızca local demo oturumu açar.
 
 ## Kullanılan teknolojiler
@@ -104,24 +104,27 @@ Enrollment sırasında:
 - Pitch/roll pozisyonu kontrol edilir.
 - Rastgele aktif challenge uygulanır:
   1. Göz kırpma
-  2. Sola veya sağa baş çevirme
+  2. İlk rastgele yöne baş çevirme
   3. Merkeze dönme
-- 20 saniyede tamamlanmazsa başarısız olur.
+  4. Diğer yöne baş çevirme
+  5. Tekrar merkeze dönme
+- 30 saniyede tamamlanmazsa başarısız olur.
 - Takip edilen yüz değişirse başarısız olur.
-- Challenge sonrası üç embedding örneği alınır.
+- Challenge sonrası farklı anlardan beş embedding örneği alınır.
+- Algılanan yüz, çevresinde pay bırakılarak kırpılır ve roll açısıyla hizalanır.
 - Her örnek L2-normalize edilir.
 - Normalize örneklerin ortalaması alınır ve tekrar normalize edilir.
-- Template secure store'a yazılır.
+- Template secure store'daki kullanıcı koleksiyonuna eklenir; yalnızca aynı kullanıcının eski kaydı güncellenir.
 
 ### 4. Verification
 
 Verification sırasında aynı kalite ve liveness kapıları kullanılır.
 
-- Üç yeni embedding örneği çıkarılır.
+- Farklı anlardan beş yeni embedding örneği çıkarılır.
 - Ortalama candidate embedding hesaplanır.
-- Kayıtlı embedding ile cosine similarity hesaplanır.
-- Demo eşik: `0.40`
-- Eşik sürümü: `demo-uncalibrated-v1`
+- Cihazdaki tüm kayıtlı embedding'lerle cosine similarity hesaplanır ve en yüksek skorlu kişi değerlendirilir.
+- Demo eşik: `0.80`
+- Eşik sürümü: `demo-cropped-v2`
 - Başarılıysa attempt sayacı sıfırlanır ve local demo oturum açılır.
 - Başarısızsa attempt sayacı artırılır.
 
@@ -135,12 +138,11 @@ E-posta/şifre her zaman mevcuttur.
 - Ön kamera yoksa
 - Model başlatılamazsa
 - Template yok/bozuk/uyumsuzsa
-- Üç yüz denemesi başarısızsa
 - Kullanıcı herhangi bir aşamada isterse
 
 kullanıcı şifre girişine dönebilir.
 
-Üç ardışık yüz başarısızlığından sonra yüz login geçici olarak durdurulur. Parola login'i bloklanmaz. Başarılı parola veya yüz girişi attempt sayacını sıfırlar.
+Yüz doğrulama deneme hakkı sınırsızdır. Başarısız bir denemeden sonra kullanıcı canlılık kontrolünü yeniden başlatabilir.
 
 ### 6. Silme ve yeniden kayıt
 

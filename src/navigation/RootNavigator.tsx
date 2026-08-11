@@ -2,9 +2,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { FaceConsentScreen } from '../screens/FaceConsentScreen';
 import { FaceEnrollmentScreen } from '../screens/FaceEnrollmentScreen';
 import { FaceVerificationScreen } from '../screens/FaceVerificationScreen';
+import { FaceWelcomeScreen } from '../screens/FaceWelcomeScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
+import { RegisteredUsersScreen } from '../screens/RegisteredUsersScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme';
@@ -17,7 +19,6 @@ export function RootNavigator() {
   const registrationConsentAcceptedAt = useAuthStore(
     state => state.registrationConsentAcceptedAt,
   );
-
   return (
     <Stack.Navigator
       screenOptions={{
@@ -26,17 +27,33 @@ export function RootNavigator() {
         headerTintColor: colors.text,
       }}
     >
-      {status === 'signedIn' ? (
+      {status === 'faceWelcome' ? (
+        <Stack.Group>
+          <Stack.Screen
+            name="FaceWelcome"
+            component={FaceWelcomeScreen}
+            options={{ headerBackVisible: false, title: 'Hoş geldiniz' }}
+          />
+        </Stack.Group>
+      ) : status === 'signedIn' ? (
         <Stack.Group>
           <Stack.Screen
             name="Home"
             component={HomeScreen}
-            options={{ title: 'X' }}
+            options={{ title: 'FaceKey' }}
           />
           <Stack.Screen
             name="Settings"
             component={SettingsScreen}
-            options={{ title: 'Ayarlar' }}
+            options={{
+              headerBackButtonDisplayMode: 'minimal',
+              title: 'Ayarlar',
+            }}
+          />
+          <Stack.Screen
+            name="RegisteredUsers"
+            component={RegisteredUsersScreen}
+            options={{ title: 'Kayıtlı kullanıcılar' }}
           />
           <Stack.Screen
             name="FaceConsent"
@@ -84,7 +101,7 @@ export function RootNavigator() {
           <Stack.Screen
             name="Login"
             component={LoginScreen}
-            options={{ title: 'X' }}
+            options={{ title: 'FaceKey' }}
           />
           <Stack.Screen
             name="Register"

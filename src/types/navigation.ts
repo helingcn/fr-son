@@ -8,6 +8,8 @@ export type RootStackParamList = {
     consentAcceptedAt: string;
   };
   FaceVerification: undefined;
+  FaceWelcome: undefined;
   Home: undefined;
   Settings: { faceEnrollmentUpdatedAt?: number } | undefined;
+  RegisteredUsers: undefined;
 };

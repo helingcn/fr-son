@@ -41,4 +41,16 @@ describe('authStore face enrollment state', () => {
       user,
     });
   });
+
+  it('opens a dedicated welcome screen after face login', () => {
+    useAuthStore.getState().completeFaceLogin(user);
+
+    expect(useAuthStore.getState()).toMatchObject({
+      status: 'faceWelcome',
+      user,
+    });
+
+    useAuthStore.getState().dismissFaceWelcome();
+    expect(useAuthStore.getState().status).toBe('signedIn');
+  });
 });

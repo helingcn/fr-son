@@ -5,6 +5,7 @@ type AuthStatus =
   | 'signedOut'
   | 'pendingRegistrationFace'
   | 'pendingFaceChoice'
+  | 'faceWelcome'
   | 'signedIn';
 
 type AuthState = {
@@ -12,6 +13,8 @@ type AuthState = {
   user: AuthUser | null;
   registrationConsentAcceptedAt: string | null;
   completeLogin: (user: AuthUser) => void;
+  completeFaceLogin: (user: AuthUser) => void;
+  dismissFaceWelcome: () => void;
   beginRegistrationFace: (user: AuthUser, consentAcceptedAt: string) => void;
   completeRegistrationFace: () => void;
   completeFaceChoice: () => void;
@@ -24,7 +27,18 @@ export const useAuthStore = create<AuthState>(set => ({
   user: null,
   registrationConsentAcceptedAt: null,
   completeLogin: user =>
-    set({ status: 'signedIn', user, registrationConsentAcceptedAt: null }),
+    set({
+      status: 'signedIn',
+      user,
+      registrationConsentAcceptedAt: null,
+    }),
+  completeFaceLogin: user =>
+    set({
+      status: 'faceWelcome',
+      user,
+      registrationConsentAcceptedAt: null,
+    }),
+  dismissFaceWelcome: () => set({ status: 'signedIn' }),
   beginRegistrationFace: (user, registrationConsentAcceptedAt) =>
     set({
       status: 'pendingRegistrationFace',

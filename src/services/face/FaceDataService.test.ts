@@ -10,6 +10,7 @@ function createStores() {
     templateStore: {
       save: jest.fn(),
       read: jest.fn(),
+      readAll: jest.fn(),
       delete: jest.fn(),
     } as jest.Mocked<FaceTemplateStore>,
     attemptStore: {
@@ -29,9 +30,9 @@ describe('FaceDataService', () => {
     attemptStore.reset.mockResolvedValue(undefined);
     const service = new FaceDataService(templateStore, attemptStore);
 
-    await service.deleteAll();
+    await service.deleteForOwner('user-1');
 
-    expect(templateStore.delete).toHaveBeenCalledTimes(1);
+    expect(templateStore.delete).toHaveBeenCalledWith('user-1');
     expect(attemptStore.reset).toHaveBeenCalledTimes(1);
   });
 
@@ -40,7 +41,7 @@ describe('FaceDataService', () => {
     templateStore.delete.mockRejectedValue(new Error());
     const service = new FaceDataService(templateStore, attemptStore);
 
-    await expect(service.deleteAll()).rejects.toThrow();
+    await expect(service.deleteForOwner('user-1')).rejects.toThrow();
     expect(attemptStore.reset).not.toHaveBeenCalled();
   });
 
@@ -51,7 +52,7 @@ describe('FaceDataService', () => {
     const service = new FaceDataService(templateStore, attemptStore);
 
     try {
-      await service.deleteAll();
+      await service.deleteForOwner('user-1');
       throw new Error('Expected deletion to fail');
     } catch (error) {
       expect(error).toBeInstanceOf(FaceDataDeletionError);

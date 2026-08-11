@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AuthScreenLayout } from '../components/AuthScreenLayout';
+import { FaceLoginButton } from '../components/FaceLoginButton';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { TextButton } from '../components/TextButton';
@@ -25,6 +26,7 @@ export function LoginScreen({ navigation }: Props) {
   const [errors, setErrors] = useState<LoginFormErrors>({});
   const [submitError, setSubmitError] = useState<string>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   async function handleLogin() {
     const validationErrors = validateLoginForm(email, password);
@@ -54,6 +56,7 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <AuthScreenLayout
+      compact
       title="Giriş yap"
       description="Hesabınıza e-posta ve şifrenizle güvenli şekilde erişin."
     >
@@ -63,6 +66,7 @@ export function LoginScreen({ navigation }: Props) {
         error={errors.email}
         inputMode="email"
         keyboardType="email-address"
+        icon="@"
         label="E-posta"
         onChangeText={value => {
           setEmail(value);
@@ -77,6 +81,7 @@ export function LoginScreen({ navigation }: Props) {
         autoCapitalize="none"
         autoComplete="current-password"
         error={errors.password}
+        icon="••"
         label="Şifre"
         onChangeText={value => {
           setPassword(value);
@@ -84,8 +89,27 @@ export function LoginScreen({ navigation }: Props) {
         }}
         onSubmitEditing={handleLogin}
         placeholder="En az 8 karakter"
+        rightAccessory={
+          <Pressable
+            accessibilityLabel={
+              isPasswordVisible ? 'Şifreyi gizle' : 'Şifreyi göster'
+            }
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => setIsPasswordVisible(current => !current)}
+            style={({ pressed }) => [
+              styles.visibilityButton,
+              pressed && styles.visibilityButtonPressed,
+            ]}
+          >
+            <View style={styles.eyeIcon}>
+              <View style={styles.pupil} />
+              {!isPasswordVisible ? <View style={styles.eyeSlash} /> : null}
+            </View>
+          </Pressable>
+        }
         returnKeyType="done"
-        secureTextEntry
+        secureTextEntry={!isPasswordVisible}
         textContentType="password"
         value={password}
       />
@@ -100,17 +124,18 @@ export function LoginScreen({ navigation }: Props) {
         onPress={handleLogin}
       />
       <View style={styles.actions}>
-        <TextButton
+        <FaceLoginButton
           disabled={isSubmitting}
-          label="Yüz ile giriş"
           onPress={() => navigation.navigate('FaceVerification')}
         />
-        <Text style={styles.secondaryText}>Hesabınız yok mu?</Text>
-        <TextButton
-          disabled={isSubmitting}
-          label="Kayıt oluştur"
-          onPress={() => navigation.navigate('Register')}
-        />
+        <View style={styles.registerRow}>
+          <Text style={styles.secondaryText}>Hesabınız yok mu?</Text>
+          <TextButton
+            disabled={isSubmitting}
+            label="Kayıt oluştur"
+            onPress={() => navigation.navigate('Register')}
+          />
+        </View>
       </View>
     </AuthScreenLayout>
   );
@@ -122,12 +147,49 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   actions: {
+    gap: spacing.sm,
+  },
+  registerRow: {
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    justifyContent: 'center',
   },
   secondaryText: {
     color: colors.textMuted,
     fontSize: 15,
-    marginTop: spacing.sm,
+  },
+  visibilityButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  visibilityButtonPressed: {
+    backgroundColor: '#EFF4FF',
+  },
+  eyeIcon: {
+    width: 22,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.8,
+    borderColor: colors.primary,
+    borderRadius: 11,
+  },
+  pupil: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
+  eyeSlash: {
+    position: 'absolute',
+    width: 25,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.primary,
+    transform: [{ rotate: '-42deg' }],
   },
 });

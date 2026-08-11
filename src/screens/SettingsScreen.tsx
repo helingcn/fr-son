@@ -1,9 +1,15 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenPlaceholder } from '../components/ScreenPlaceholder';
-import { TextButton } from '../components/TextButton';
 import {
   FaceDataDeletionError,
   faceDataService,
@@ -19,6 +25,7 @@ type FaceDataState = 'loading' | 'registered' | 'empty' | 'error';
 
 export function SettingsScreen({ navigation, route }: Props) {
   const signOut = useAuthStore(state => state.signOut);
+  const user = useAuthStore(state => state.user);
   const requireFaceChoice = useAuthStore(state => state.requireFaceChoice);
   const [faceDataState, setFaceDataState] = useState<FaceDataState>('loading');
   const [templateMetadata, setTemplateMetadata] = useState<
@@ -30,7 +37,8 @@ export function SettingsScreen({ navigation, route }: Props) {
   const loadFaceDataState = useCallback(async () => {
     setFaceDataState('loading');
     try {
-      const template = await faceTemplateStore.read();
+      const templates = await faceTemplateStore.readAll();
+      const template = templates.find(item => item.owner.id === user?.id);
       if (template) {
         setTemplateMetadata({
           enrolledAt: template.enrolledAt,
@@ -44,7 +52,7 @@ export function SettingsScreen({ navigation, route }: Props) {
     } catch {
       setFaceDataState('error');
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     loadFaceDataState();
@@ -69,7 +77,10 @@ export function SettingsScreen({ navigation, route }: Props) {
     setIsDeleting(true);
     setStatusMessage(undefined);
     try {
-      await faceDataService.deleteAll();
+      if (!user) {
+        throw new Error('Kullanıcı bulunamadı.');
+      }
+      await faceDataService.deleteForOwner(user.id);
       setTemplateMetadata(undefined);
       setFaceDataState('empty');
       setStatusMessage('Yüz veriniz bu cihazdan silindi.');
@@ -97,67 +108,172 @@ export function SettingsScreen({ navigation, route }: Props) {
   const registered = faceDataState === 'registered';
 
   return (
-    <ScreenPlaceholder
-      title="Ayarlar"
-      description="Yüz ile giriş isteğe bağlıdır. Yüz şablonunuz yalnızca bu cihazın güvenli deposunda tutulur."
-    >
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Yüz ile giriş</Text>
-        <Text accessibilityLiveRegion="polite" style={styles.stateText}>
-          {faceDataState === 'loading'
-            ? 'Yüz verisi durumu kontrol ediliyor…'
-            : registered
-            ? 'Bu cihazda yüz kaydı mevcut.'
-            : faceDataState === 'empty'
-            ? 'Bu cihazda yüz kaydı yok.'
-            : 'Yüz verisi durumu okunamadı.'}
+    <SafeAreaView edges={['bottom']} style={styles.safeArea}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.description}>
+          Yüz ile giriş isteğe bağlıdır. Yüz şablonunuz yalnızca bu cihazın
+          güvenli deposunda tutulur.
         </Text>
-        {registered && templateMetadata ? (
-          <View style={styles.metadata}>
-            <Text style={styles.metadataText}>
-              Kayıt tarihi: {formatDate(templateMetadata.enrolledAt)}
-            </Text>
-            <Text style={styles.metadataText}>
-              Rıza sürümü: {templateMetadata.consent.version}
-            </Text>
-            <Text style={styles.metadataText}>
-              Rıza tarihi: {formatDate(templateMetadata.consent.acceptedAt)}
-            </Text>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Yüz ile giriş</Text>
+            {registered ? (
+              <View style={styles.activeBadge}>
+                <View style={styles.activeDot} />
+                <Text style={styles.activeBadgeText}>Aktif</Text>
+              </View>
+            ) : null}
           </View>
-        ) : null}
-        {faceDataState === 'error' ? (
-          <PrimaryButton
-            label="Tekrar kontrol et"
-            onPress={loadFaceDataState}
-          />
-        ) : registered ? (
-          <>
+          <Text accessibilityLiveRegion="polite" style={styles.stateText}>
+            {faceDataState === 'loading'
+              ? 'Yüz verisi durumu kontrol ediliyor…'
+              : registered
+              ? 'Bu cihazda yüz kaydınız mevcut.'
+              : faceDataState === 'empty'
+              ? 'Bu cihazda yüz kaydınız yok.'
+              : 'Yüz verisi durumu okunamadı.'}
+          </Text>
+          {registered && templateMetadata ? (
+            <View style={styles.metadata}>
+              <Text style={styles.metadataText}>
+                Kayıt tarihi: {formatDate(templateMetadata.enrolledAt)}
+              </Text>
+              <Text style={styles.metadataText}>
+                Onay tarihi: {formatDate(templateMetadata.consent.acceptedAt)}
+              </Text>
+            </View>
+          ) : null}
+          {faceDataState === 'error' ? (
+            <PrimaryButton
+              label="Tekrar kontrol et"
+              onPress={loadFaceDataState}
+            />
+          ) : registered ? (
+            <>
+              <OutlineButton
+                disabled={isDeleting}
+                label="Yüzümü yeniden kaydet"
+                onPress={startEnrollment}
+              />
+              <DestructiveButton
+                disabled={isDeleting}
+                label={isDeleting ? 'Yüz verisi siliniyor…' : 'Yüz verimi sil'}
+                onPress={confirmDelete}
+              />
+            </>
+          ) : faceDataState === 'empty' ? (
             <PrimaryButton
               disabled={isDeleting}
-              label="Yüzümü yeniden kaydet"
+              label="Yüz ile girişi kur"
               onPress={startEnrollment}
             />
-            <TextButton
-              disabled={isDeleting}
-              label={isDeleting ? 'Yüz verisi siliniyor…' : 'Yüz verimi sil'}
-              onPress={confirmDelete}
-            />
-          </>
-        ) : faceDataState === 'empty' ? (
-          <PrimaryButton
-            disabled={isDeleting}
-            label="Yüz ile girişi kur"
-            onPress={startEnrollment}
-          />
+          ) : null}
+        </View>
+
+        {statusMessage ? (
+          <Text accessibilityLiveRegion="polite" style={styles.statusMessage}>
+            {statusMessage}
+          </Text>
         ) : null}
-      </View>
-      {statusMessage ? (
-        <Text accessibilityLiveRegion="polite" style={styles.statusMessage}>
-          {statusMessage}
-        </Text>
-      ) : null}
-      <TextButton disabled={isDeleting} label="Çıkış yap" onPress={signOut} />
-    </ScreenPlaceholder>
+
+        <Pressable
+          accessibilityRole="button"
+          disabled={isDeleting}
+          onPress={() => navigation.navigate('RegisteredUsers')}
+          style={({ pressed }) => [
+            styles.settingsRow,
+            pressed && styles.settingsRowPressed,
+            isDeleting && styles.disabled,
+          ]}
+        >
+          <UsersIcon />
+          <View style={styles.settingsRowContent}>
+            <Text style={styles.settingsRowTitle}>Kayıtlı kullanıcılar</Text>
+            <Text style={styles.settingsRowDescription}>
+              Bu cihazdaki yüz profillerini görüntüle
+            </Text>
+          </View>
+          <Text accessibilityElementsHidden style={styles.chevron}>
+            ›
+          </Text>
+        </Pressable>
+
+        <DestructiveButton
+          disabled={isDeleting}
+          label="Çıkış yap"
+          onPress={signOut}
+          outlined
+        />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+type ActionButtonProps = {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+};
+
+function OutlineButton({ label, onPress, disabled }: ActionButtonProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.outlineButton,
+        pressed && styles.outlineButtonPressed,
+        disabled && styles.disabled,
+      ]}
+    >
+      <Text style={styles.outlineButtonText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function DestructiveButton({
+  label,
+  onPress,
+  disabled,
+  outlined = false,
+}: ActionButtonProps & { outlined?: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.destructiveButton,
+        outlined && styles.destructiveButtonOutlined,
+        pressed && styles.destructiveButtonPressed,
+        disabled && styles.disabled,
+      ]}
+    >
+      <Text
+        style={[
+          styles.destructiveButtonText,
+          outlined && styles.destructiveButtonTextOutlined,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <View accessibilityElementsHidden style={styles.usersIcon}>
+      <View style={styles.userHead} />
+      <View style={styles.userBody} />
+    </View>
   );
 }
 
@@ -169,26 +285,69 @@ function formatDate(value: string) {
 }
 
 const styles = StyleSheet.create({
-  card: {
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    flexGrow: 1,
     gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+  },
+  description: {
+    color: colors.textMuted,
+    fontSize: 16,
+    lineHeight: 23,
+  },
+  card: {
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: spacing.md,
     backgroundColor: colors.surface,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
   },
   cardTitle: {
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
   },
+  activeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: '#ECFDF3',
+  },
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#12B76A',
+  },
+  activeBadgeText: {
+    color: '#027A48',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   stateText: {
     color: colors.text,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
   },
   metadata: {
     gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
   metadataText: {
     color: colors.textMuted,
@@ -198,5 +357,104 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     lineHeight: 21,
+  },
+  outlineButton: {
+    minHeight: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  outlineButtonPressed: {
+    backgroundColor: '#EFF4FF',
+  },
+  outlineButtonText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  destructiveButton: {
+    minHeight: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    backgroundColor: '#D92D20',
+  },
+  destructiveButtonOutlined: {
+    borderWidth: 1.5,
+    borderColor: colors.error,
+    backgroundColor: colors.surface,
+  },
+  destructiveButtonPressed: {
+    opacity: 0.82,
+  },
+  destructiveButtonText: {
+    color: colors.surface,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  destructiveButtonTextOutlined: {
+    color: colors.error,
+  },
+  settingsRow: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  settingsRowPressed: {
+    backgroundColor: '#F2F4F7',
+  },
+  settingsRowContent: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  settingsRowTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  settingsRowDescription: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  chevron: {
+    color: colors.textMuted,
+    fontSize: 28,
+    lineHeight: 30,
+  },
+  usersIcon: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    borderRadius: 12,
+    backgroundColor: '#EFF4FF',
+  },
+  userHead: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  userBody: {
+    width: 18,
+    height: 9,
+    borderTopLeftRadius: 9,
+    borderTopRightRadius: 9,
+    backgroundColor: colors.primary,
+  },
+  disabled: {
+    opacity: 0.5,
   },
 });

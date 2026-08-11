@@ -8,7 +8,11 @@ import {
 } from 'react-native-vision-camera-face-detector';
 import type { Resizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
-import { prewhitenRgbPixels } from '../../services/face/preprocess';
+import {
+  cropAndAlignRgbPixels,
+  prewhitenRgbPixels,
+} from '../../services/face/preprocess';
+import { FACE_MODEL } from '../../services/face/types';
 
 const FRAME_RESOLUTION = { width: 480, height: 640 };
 const FACE_DETECTOR_OPTIONS = {
@@ -22,6 +26,7 @@ const FACE_DETECTOR_OPTIONS = {
 export type DetectedFace = Pick<
   Face,
   | 'bounds'
+  | 'frameHeight'
   | 'frameWidth'
   | 'leftEyeOpenProbability'
   | 'pitchAngle'
@@ -76,6 +81,7 @@ export function useFaceCameraOutput({
               height: face.bounds.height,
             },
             frameWidth: face.frameWidth,
+            frameHeight: face.frameHeight,
             leftEyeOpenProbability: face.leftEyeOpenProbability,
             pitchAngle: face.pitchAngle,
             rightEyeOpenProbability: face.rightEyeOpenProbability,
@@ -89,7 +95,17 @@ export function useFaceCameraOutput({
           return;
         }
 
-        if (!shouldExtract || model == null || resizer == null) {
+        const face = faces[0];
+        if (
+          !shouldExtract ||
+          model == null ||
+          resizer == null ||
+          faces.length !== 1 ||
+          face == null ||
+          Math.abs(face.pitchAngle) > 12 ||
+          Math.abs(face.rollAngle) > 10 ||
+          Math.abs(face.yawAngle) > 12
+        ) {
           return;
         }
 
@@ -97,7 +113,20 @@ export function useFaceCameraOutput({
         try {
           resized = resizer.resize(frame);
           const pixels = new Float32Array(resized.getPixelBuffer());
-          const standardized = prewhitenRgbPixels(pixels);
+          const cropped = cropAndAlignRgbPixels(
+            pixels,
+            FACE_MODEL.extractionWidth,
+            FACE_MODEL.extractionHeight,
+            {
+              ...face.bounds,
+              frameWidth: face.frameWidth,
+              frameHeight: face.frameHeight,
+              rollAngle: face.rollAngle,
+            },
+            FACE_MODEL.inputSize,
+            FACE_MODEL.cropScale,
+          );
+          const standardized = prewhitenRgbPixels(cropped);
           const output = model.runSync([standardized.buffer])[0];
           if (output == null) {
             throw new Error('FaceNet output is missing.');

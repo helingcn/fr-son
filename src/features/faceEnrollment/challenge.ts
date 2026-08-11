@@ -17,14 +17,17 @@ export type ChallengeState = {
   error?: 'timeout' | 'tracking-changed';
 };
 
-export const CHALLENGE_TIMEOUT_MS = 20_000;
+export const CHALLENGE_TIMEOUT_MS = 30_000;
 
 export function createChallengeState(
   turn: 'left' | 'right',
   startedAt: number,
 ): ChallengeState {
+  const firstTurn = turn === 'left' ? 'turnLeft' : 'turnRight';
+  const secondTurn = turn === 'left' ? 'turnRight' : 'turnLeft';
+
   return {
-    steps: ['blink', turn === 'left' ? 'turnLeft' : 'turnRight', 'center'],
+    steps: ['blink', firstTurn, 'center', secondTurn, 'center'],
     currentIndex: 0,
     startedAt,
     blinkClosedObserved: false,

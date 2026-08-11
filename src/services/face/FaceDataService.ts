@@ -20,8 +20,8 @@ export class FaceDataService {
     private readonly attemptStore: FaceVerificationAttemptStore,
   ) {}
 
-  async deleteAll() {
-    await this.templateStore.delete();
+  async deleteForOwner(ownerId: string) {
+    await this.templateStore.delete(ownerId);
 
     try {
       await this.attemptStore.reset();

@@ -1,5 +1,5 @@
 import { DemoFaceNetEngine } from './DemoFaceNetEngine';
-import { FACE_MODEL } from './types';
+import { FACE_MATCH_POLICY, FACE_MODEL } from './types';
 
 const createVector = (firstValue: number) => [
   firstValue,
@@ -39,8 +39,8 @@ describe('DemoFaceNetEngine', () => {
       ...Array(FACE_MODEL.embeddingDimension - 2).fill(0),
     ];
     const boundary = [
-      0.4,
-      Math.sqrt(1 - 0.4 * 0.4),
+      FACE_MATCH_POLICY.threshold,
+      Math.sqrt(1 - FACE_MATCH_POLICY.threshold ** 2),
       ...Array(FACE_MODEL.embeddingDimension - 2).fill(0),
     ];
 
